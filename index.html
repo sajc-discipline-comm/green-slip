@@ -124,6 +124,17 @@ h2{font-size:28px}
 }
 .field input::placeholder{color:#b9b3a8}
 .field input:focus{outline:none;border-bottom-color:var(--accent)}
+.field.pw{position:relative}
+.field.pw input{padding-right:46px}
+.peek{
+  position:absolute;right:0;bottom:5px;border:0;background:none;cursor:pointer;
+  padding:7px 2px;color:var(--muted);transition:color .2s var(--ease);
+}
+.peek:hover{color:var(--accent)}
+.peek svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;display:block}
+.peek .slash{opacity:0;transition:opacity .2s var(--ease)}
+.peek.showing .slash{opacity:1}
 
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:11px;
@@ -226,7 +237,7 @@ canvas{display:none}
 
 <div class="prog"><i id="bar"></i></div>
 <div class="top">
-  <div class="brand">SAJC General Office <em id="hdrSub"></em></div>
+  <div class="brand">SAJC Discipline Committee <em id="hdrSub"></em></div>
   <button class="back" id="back" onclick="goBack()">← Back</button>
 </div>
 
@@ -241,9 +252,16 @@ canvas{display:none}
     <label for="who">Your name</label>
     <input id="who" autocomplete="name">
   </div>
-  <div class="field">
+  <div class="field pw">
     <label for="pw">Password</label>
     <input id="pw" type="password" autocomplete="current-password" placeholder="••••••••">
+    <button class="peek" id="peek" onclick="togglePw()" aria-label="Show the password">
+      <svg viewBox="0 0 24 24">
+        <path d="M1.8 12S5.4 5.2 12 5.2 22.2 12 22.2 12 18.6 18.8 12 18.8 1.8 12 1.8 12Z"/>
+        <circle cx="12" cy="12" r="3.1"/>
+        <path class="slash" d="M3.4 3.4 20.6 20.6"/>
+      </svg>
+    </button>
   </div>
   <button class="btn wide" id="btnLogin" onclick="doLogin()">Sign in</button>
 </section>
@@ -660,6 +678,17 @@ function hitButton(st, key){
 }
 
 /* ── the loop ───────────────────────────────────────────────────────── */
+/** Show the password. Same control as the gate scanner. */
+function togglePw(){
+  var input = document.getElementById('pw');
+  var btn   = document.getElementById('peek');
+  var show  = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  btn.classList.toggle('showing', !show);
+  btn.setAttribute('aria-label', show ? 'Hide the password' : 'Show the password');
+  input.focus();
+}
+
 function goScan(){ go('find'); startCamera(); }
 function leaveScan(){ stopCamera(); go('home', true); }
 function goType(){ stopCamera(); go('type'); setTimeout(function(){ document.getElementById('q').focus(); },160); }
