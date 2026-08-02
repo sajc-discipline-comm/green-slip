@@ -13,10 +13,13 @@
   ==========================================================================
   Built 31 July 2026 for discipline@sajc.edu.sg.
 
-  PASTE THE DEPLOYMENT URL INTO GAS_URL BELOW — the SAME one as gate.html.
-  Nothing else in this file needs editing, ever. The five reasons come from
-  the Reasons tab at run time, so rewording one or retiring one is a cell
-  edit in the spreadsheet.
+  GAS_URL IS ALREADY SET, to the same deployment as gate.html. Nothing in
+  this file needs editing, ever. The five reasons come from the Reasons tab
+  at run time, so rewording one or retiring one is a cell edit.
+
+  It only changes if somebody creates a NEW deployment rather than editing
+  the existing one, which issues a different address and silently strands
+  both pages on the old code.
 
   WHO USES THIS
   --------------------------------------------------------------------------
@@ -32,8 +35,18 @@
   the tear-off strip the guard receives is a working offline control. This
   records what happened; it does not authorise it.
 
-  SESSIONS ARE SEPARATE FROM THE GATE SCANNER. Same password, same backend,
-  different session key — so signing in here does not sign anyone in there.
+  ITS OWN PASSWORD, NOT THE COMMITTEE'S. This page signs in with goLogin,
+  against the General Office password set from the Attendance menu. Changed
+  2 August 2026: it used to use the committee password, which meant the
+  officer using it held a token that could stamp follow-up, overturn a record
+  and hold a ladder. What she can now reach is the seven actions in
+  GO_ACTIONS and nothing else.
+
+  IF SIGN-IN REFUSES EVERYONE, the General Office password has not been set
+  yet. In the spreadsheet: Attendance → Set the General Office password.
+
+  Same backend as the gate scanner, different password, different session
+  key — so signing in here does not sign anyone in there, and vice versa.
   ==========================================================================
 -->
 <style>
@@ -241,6 +254,17 @@ canvas{display:none}
   <button class="back" id="back" onclick="goBack()">← Back</button>
 </div>
 
+<!-- BACKFILL MODE IS LOUD ON PURPOSE. It changes what date every save lands
+     on, it persists between students, and the person using this page in the
+     morning is recording rather than auditing. A mode you can forget you are
+     in is a mode that quietly misdates a term's worth of slips. -->
+<div id="backfillBar" style="display:none;background:var(--warn-tint);color:var(--warn);
+     border-bottom:1px solid var(--warn);padding:9px 16px;font-size:13.5px;text-align:center">
+  <strong>Filing older slips</strong> — <span id="backfillWhen">no date set</span>
+  · <a href="#" onclick="toggleBackfill();return false;"
+       style="color:inherit;text-decoration:underline">back to today</a>
+</div>
+
 <div class="stage">
 
 <!-- 1 · LOGIN -->
@@ -288,6 +312,7 @@ canvas{display:none}
     <div id="recentList"></div>
   </div>
   <div class="stack" style="margin-top:22px">
+    <button class="btn plain" id="btnBackfill" onclick="toggleBackfill()">🗓️ File an older slip</button>
     <button class="btn plain" onclick="refreshAll()">↻ Refresh the roster</button>
     <button class="btn plain" onclick="signOut()">Sign out</button>
   </div>
@@ -366,6 +391,10 @@ canvas{display:none}
     <label for="timeOut">Time out</label>
     <input id="timeOut" inputmode="numeric" autocomplete="off">
   </div>
+  <div class="field" id="dateField" style="display:none">
+    <label for="slipDate">Date of the slip</label>
+    <input id="slipDate" type="date">
+  </div>
   <button class="btn wide" id="btnSave" onclick="save()">Save</button>
   <button class="btn plain" onclick="goBack()">Change the reason</button>
 </section>
@@ -386,9 +415,9 @@ canvas{display:none}
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
-   PASTE YOUR DEPLOYMENT URL HERE — the SAME one as gate.html
+   THE DEPLOYMENT URL. Already set — the same one as gate.html.
    ═══════════════════════════════════════════════════════════════════════ */
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbxm68iLB0wBy-goORwxBAK3ZySAGT4LHV-R4KfB00PGdXL8fu569vrvvUUpzxF8nrhyIw/exec';
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbzEviXmBucgufueIuXLJS2YnKsIiYFoT0g1F2wtMHNBAdUiwKIyFS17Bqdq7rBpGMv5FA/exec';
 
 /* Any token an older build left in localStorage is wiped on load. Nothing
    here ever writes to it. */
@@ -398,7 +427,10 @@ var S = {
   token:null, who:'', students:[], reasons:[], today:{},
   cfg:{minScore:.72,minMargin:.15,cooldown:15},
   student:null, reason:null, lastEntry:null, recent:[], done:0,
-  loadedAt:'', candidates:[]
+  loadedAt:'', candidates:[],
+  // Filing older slips. Deliberately NOT persisted to sessionStorage — a mode
+  // that survives a reload is a mode somebody inherits without choosing it.
+  backfill:false, slipDate:''
 };
 
 var PANES = { login:'pLogin', loading:'pLoading', home:'pHome', find:'pFind',
@@ -486,7 +518,7 @@ function doLogin(){
   var b = document.getElementById('btnLogin');
   b.disabled = true; b.textContent = 'Signing in…'; say('mLogin','');
   fetch(GAS_URL, { method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body:JSON.stringify({ action:'login', password:pw }) })
+    body:JSON.stringify({ action:'goLogin', password:pw }) })
     .then(function(r){ return r.json(); })
     .then(function(j){
       b.disabled = false; b.textContent = 'Sign in';
@@ -506,6 +538,9 @@ function doLogin(){
 }
 function signOut(why){
   S.token=null; S.students=[]; S.reasons=[]; S.recent=[]; S.done=0; HISTORY=[];
+  // Signing out leaves the filing mode. The next person to pick up this phone
+  // is recording today, and should not inherit somebody else's back-date.
+  S.backfill=false; S.slipDate=''; paintBackfill();
   try { sessionStorage.removeItem('sajc_ed_token');
         sessionStorage.removeItem('sajc_ed_who'); } catch(e){}
   document.getElementById('hdrSub').textContent='';
@@ -543,7 +578,8 @@ function paintHome(){
     b.className='choice';
     b.innerHTML='<span class="key">✕</span><span class="txt"><b></b><span></span></span>';
     b.querySelector('b').textContent = r.name;
-    b.querySelector('.txt span').textContent = r.cls + ' · ' + r.label + ' · left ' + r.timeOut;
+    b.querySelector('.txt span').textContent =
+      r.cls + ' · ' + r.label + (r.date ? ' · ' + r.date : '') + ' · left ' + r.timeOut;
     b.onclick = function(){ removeRecent(r.entryId); };
     list.appendChild(b);
   });
@@ -735,9 +771,40 @@ function chooseReason(r){
   document.getElementById('dEyebrow').textContent = S.student.name + ' · ' + r.label;
   document.getElementById('detail').value='';
   document.getElementById('timeOut').value=nowHHMM();
+  document.getElementById('dateField').style.display = S.backfill ? '' : 'none';
+  // The date STAYS from the last slip filed. Backfilling is done a day at a
+  // time — several students left early on the same afternoon — so re-picking
+  // the date for every student would be the tedious part, and tedium is what
+  // makes somebody stop checking it.
+  document.getElementById('slipDate').value = S.backfill ? (S.slipDate||'') : '';
   say('mDetail','');
   go('detail');
   setTimeout(function(){ document.getElementById('detail').focus(); },160);
+}
+
+/* FILING OLDER SLIPS.
+   A separate mode rather than a date field that is always there. The field
+   being always editable means one mis-tap backdates a live slip and nobody
+   finds out; a mode has to be entered on purpose and says so on every screen
+   until it is left. */
+function toggleBackfill(){
+  S.backfill = !S.backfill;
+  if (!S.backfill) S.slipDate='';
+  paintBackfill();
+  if (S.backfill) say('mHome','Slips you save will be dated whatever you pick, not today.','warn');
+  else say('mHome','');
+}
+function paintBackfill(){
+  document.getElementById('backfillBar').style.display = S.backfill ? '' : 'none';
+  document.getElementById('backfillWhen').textContent =
+    S.slipDate ? prettyDate(S.slipDate) : 'pick the date on the next screen';
+  var b=document.getElementById('btnBackfill');
+  if (b) b.textContent = S.backfill ? '✓ Filing older slips — tap to stop' : '🗓️ File an older slip';
+}
+function prettyDate(iso){
+  var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||''); if(!m) return iso||'';
+  var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return m[3]+' '+MON[Number(m[2])-1]+' '+m[1];
 }
 
 function save(){
@@ -747,21 +814,27 @@ function save(){
   if (!/^\d{1,2}:\d{2}$/.test(timeOut)){
     say('mDetail','The time out needs to look like 11:20.'); return;
   }
+  var slipDate = S.backfill ? document.getElementById('slipDate').value.trim() : '';
+  if (S.backfill && !slipDate){
+    say('mDetail','Pick the date this slip is for, or leave the filing mode.'); return;
+  }
   var b=document.getElementById('btnSave');
   b.disabled=true; b.textContent='Saving…';
   post('logEarly',{ studentId:s.id, name:s.name, cls:s.cls, reason:r.code,
-                    detail:detail, timeOut:timeOut, by:S.who })
+                    detail:detail, timeOut:timeOut, by:S.who, date:slipDate })
     .then(function(j){
       b.disabled=false; b.textContent='Save';
       if (!j.ok){ say('mDetail', j.error); return; }
+      if (S.backfill){ S.slipDate=slipDate; paintBackfill(); }
       S.lastEntry={entryId:j.entryId};
       S.recent.unshift({entryId:j.entryId,name:s.name,cls:s.cls,
-                        label:j.label,timeOut:j.timeOut});
+                        label:j.label,timeOut:j.timeOut,date:j.backdated?j.date:''});
       S.recent=S.recent.slice(0,10); S.done++;
       document.getElementById('doneWhat').textContent =
-        s.name + ' · ' + s.cls + ' · ' + j.label + ' · left at ' + j.timeOut;
+        s.name + ' · ' + s.cls + ' · ' + j.label +
+        (j.backdated ? ' · ' + j.date : '') + ' · left at ' + j.timeOut;
       say('mDone', j.counted ? '' :
-        'Recorded in full, but not counted toward their total — the school itself pulled them out.',
+        'Recorded in full, but not counted toward their total.',
         'ok');
       document.getElementById('btnUndo').style.display='block';
       go('done');
