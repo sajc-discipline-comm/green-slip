@@ -13,13 +13,20 @@
   ==========================================================================
   Built 31 July 2026 for discipline@sajc.edu.sg.
 
-  GAS_URL IS ALREADY SET, to the same deployment as gate.html. Nothing in
-  this file needs editing, ever. The five reasons come from the Reasons tab
-  at run time, so rewording one or retiring one is a cell edit.
+  GAS_URL IS THE ONE LINE IN THIS FILE THAT CAN GO STALE. It points at the
+  same deployment as gate.html. The five reasons come from the Reasons tab at
+  run time, so rewording one or retiring one is still only a cell edit.
 
-  It only changes if somebody creates a NEW deployment rather than editing
-  the existing one, which issues a different address and silently strands
-  both pages on the old code.
+  IT CHANGES WHENEVER A NEW DEPLOYMENT IS CREATED rather than the existing one
+  edited, and a stale address is the worst-behaved failure in this system: it
+  looks exactly like a network problem, it is invisible when reading the code,
+  and it takes BOTH phone pages down at once.
+
+  That happened on 2 August 2026 — the deployment was lost and recreated at a
+  new address, and copies of this file kept the old one for a day. The URL
+  below was set on 2 August. If sign-in ever says "could not reach the
+  server", paste this address into a browser first: a healthy deployment
+  answers with a small page saying it is the backend.
 
   WHO USES THIS
   --------------------------------------------------------------------------
@@ -200,6 +207,36 @@ h2{font-size:28px}
 .tick svg{width:34px;height:34px;stroke:var(--good);stroke-width:2.6;fill:none;
   stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:32;stroke-dashoffset:32;
   animation:draw .5s var(--ease) forwards .3s}
+/* ── THE THRESHOLD STATES, ADDED 3 AUGUST 2026 ──────────────────────────
+   The Saved screen changes colour when the student has reached the number in
+   ⚙️ Config. It is the same screen either way — same tick, same words in the
+   same places — because a screen that rearranges itself is a screen somebody
+   stops reading. Only the colour and one extra sentence change.
+
+   IT IS AMBER AND RED, NOT A POPUP OR A SOUND. Nothing here asks the officer
+   to stop, decide or refuse. Her job is still "record it, don't act on it" —
+   the one new thing asked of her is to mention it to a school leader, and the
+   screen says so in words rather than making her infer it from a colour.
+
+   The green state is untouched, so the ordinary case looks exactly as it did. */
+.pane.flagged .tick{background:var(--warn-tint)}
+.pane.flagged .tick svg{stroke:var(--warn)}
+.pane.flagged h2{color:var(--warn)}
+.pane.flagged.hard .tick{background:var(--bad-tint)}
+.pane.flagged.hard .tick svg{stroke:var(--bad)}
+.pane.flagged.hard h2{color:var(--bad)}
+
+/* The count, said in figures rather than in a sentence, because it is the one
+   thing on this screen somebody may need to read out loud down a phone. */
+.tally{display:flex;justify-content:center;gap:26px;margin:0 0 20px;flex-wrap:wrap}
+.tally div{text-align:center}
+.tally b{display:block;font-family:'Fraunces',Georgia,serif;font-size:31px;
+  font-weight:600;line-height:1;letter-spacing:-.02em;color:var(--ink)}
+.tally span{display:block;font-size:12px;color:var(--muted);margin-top:5px;
+  letter-spacing:.03em}
+.pane.flagged .tally b.hit{color:var(--warn)}
+.pane.flagged.hard .tally b.hit{color:var(--bad)}
+
 @keyframes pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
 @keyframes draw{to{stroke-dashoffset:0}}
 .centered{text-align:center}
@@ -402,8 +439,9 @@ canvas{display:none}
 <!-- 9 · DONE -->
 <section class="pane centered" id="pDone">
   <div class="tick"><svg viewBox="0 0 24 24"><path d="M4 12.5l5.5 5.5L20 7"/></svg></div>
-  <h2>Saved</h2>
+  <h2 id="doneTitle">Saved</h2>
   <p class="lede" id="doneWhat"></p>
+  <div class="tally" id="doneTally"></div>
   <div id="mDone"></div>
   <div class="stack">
     <button class="btn wide" onclick="nextStudent()">Next student</button>
@@ -833,14 +871,89 @@ function save(){
       document.getElementById('doneWhat').textContent =
         s.name + ' · ' + s.cls + ' · ' + j.label +
         (j.backdated ? ' · ' + j.date : '') + ' · left at ' + j.timeOut;
-      say('mDone', j.counted ? '' :
-        'Recorded in full, but not counted toward their total.',
-        'ok');
+      paintStanding(s.name, j);
       document.getElementById('btnUndo').style.display='block';
       go('done');
     })
     .catch(function(e){ b.disabled=false; b.textContent='Save'; say('mDetail', e.message); });
 }
+/* ── THE RUNNING TOTAL ON THE SAVED SCREEN ─────────────────────────────
+   Added 3 August 2026, so the officer at the counter can see that the student
+   in front of her has done this before, and tell a school leader while the
+   student is still standing there.
+
+   EVERY NUMBER AND EVERY THRESHOLD COMES FROM THE SERVER. This function does
+   no arithmetic beyond choosing which of three sentences to print. The reason
+   is that the Hub shows the same figures on the committee's screen, and if the
+   phone worked out its own answer the two could disagree about whether a
+   student is flagged — the school's number would then depend on which screen
+   somebody happened to be looking at.
+
+   BOTH FIGURES ARE SHOWN, BUT ONLY ONE COLOURS. Kim, 3 August 2026: "all
+   slips, but colour only on the counted ones." So a student with six awards
+   ceremonies reads "6 early dismissals · 0 that count" and stays green — the
+   officer is not blind to how often she has seen him, and he is not flagged
+   for something the school itself sent him to.
+
+   A MISSING TOTAL IS SAID OUT LOUD. If standing comes back null the Log could
+   not be read; the screen says so rather than printing zeroes, because zero
+   and unknown are the same picture and opposite facts. */
+function paintStanding(name, j){
+  var pane = document.getElementById('pDone');
+  var tally = document.getElementById('doneTally');
+  var title = document.getElementById('doneTitle');
+  pane.classList.remove('flagged','hard');
+  title.textContent = 'Saved';
+  tally.innerHTML = '';
+
+  var st = j.standing;
+  if (!st){
+    say('mDone', 'Saved. Their running total could not be read just now, so this screen ' +
+                 'cannot tell you whether they have crossed the threshold — the slip itself ' +
+                 'is recorded.', 'warn');
+    return;
+  }
+
+  var first = name.split(/\s+/)[0] || name;
+  var hitTerm = st.overTerm, hitYear = st.overYear;
+
+  tally.innerHTML =
+    '<div><b class="' + (hitTerm ? 'hit' : '') + '">' + st.term + '</b>' +
+      '<span>that count' + (st.termNo ? ', term ' + st.termNo : ' this term') + '</span></div>' +
+    '<div><b class="' + (hitYear ? 'hit' : '') + '">' + st.year + '</b>' +
+      '<span>that count this year</span></div>' +
+    '<div><b>' + st.yearAll + '</b><span>times in all</span></div>';
+
+  if (hitYear){
+    pane.classList.add('flagged','hard');
+    title.textContent = 'Saved — please tell a school leader';
+    say('mDone', 'This is the ' + ord(st.year) + ' early dismissal for ' + first +
+                 ' this year that counts, out of ' + st.yearAll + ' in all. The school ' +
+                 'has set ' + st.atYear + ' a year as the point to look at a case. ' +
+                 'Please mention it to a school leader — you do not need to do anything ' +
+                 'else, and nothing changes for the student today.', 'err');
+  } else if (hitTerm){
+    pane.classList.add('flagged');
+    title.textContent = 'Saved — worth mentioning';
+    say('mDone', 'That is ' + first + '’s ' + ord(st.term) + ' early dismissal this ' +
+                 'term that counts, out of ' + st.termAll + ' in all. The school has set ' +
+                 st.atTerm + ' in a term as the point to look at a case. Please mention it ' +
+                 'to a school leader when you get a moment.', 'warn');
+  } else {
+    say('mDone', j.counted ? '' :
+        'Recorded in full, but not counted toward their total.', 'ok');
+  }
+}
+
+/* 1st, 2nd, 3rd, 4th. Worth the six lines: "the 3 early dismissal" reads like
+   a typo, and this sentence is one somebody may repeat to a school leader. */
+function ord(n){
+  n = Number(n) || 0;
+  var t = n % 100;
+  if (t >= 11 && t <= 13) return n + 'th';
+  return n + (['th','st','nd','rd'][n % 10] || 'th');
+}
+
 function undoLast(){
   if (!S.lastEntry) return;
   var entry=S.lastEntry;
@@ -850,6 +963,14 @@ function undoLast(){
     S.lastEntry=null; S.done=Math.max(0,S.done-1);
     document.getElementById('btnUndo').style.display='none';
     document.getElementById('doneWhat').textContent='Removed. Nothing was recorded for this student.';
+    /* The flag went with it. Leaving the screen amber after the slip that
+       caused it has been undone would have the officer reporting a student who,
+       as far as the record is now concerned, never left early. */
+    var pane=document.getElementById('pDone');
+    pane.classList.remove('flagged','hard');
+    document.getElementById('doneTitle').textContent='Saved';
+    document.getElementById('doneTally').innerHTML='';
+    say('mDone','');
   }).catch(function(e){ alert(e.message); });
 }
 
