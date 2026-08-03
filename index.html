@@ -917,12 +917,27 @@ function paintStanding(name, j){
   var first = name.split(/\s+/)[0] || name;
   var hitTerm = st.overTerm, hitYear = st.overYear;
 
+  /* TWO FIGURES, NOT THREE — changed 3 August 2026 to match the Hub. There
+     used to be a third, "times in all", sitting beside "that count". The two
+     were almost always the same number, and where they differed the screen was
+     quietly asking the officer to work out which one mattered. Now the counted
+     set is everything except the departures the school itself caused, so the
+     figure shown IS the figure the threshold uses. */
   tally.innerHTML =
     '<div><b class="' + (hitTerm ? 'hit' : '') + '">' + st.term + '</b>' +
-      '<span>that count' + (st.termNo ? ', term ' + st.termNo : ' this term') + '</span></div>' +
+      '<span>this term' + (st.termNo ? ' (term ' + st.termNo + ')' : '') + '</span></div>' +
     '<div><b class="' + (hitYear ? 'hit' : '') + '">' + st.year + '</b>' +
-      '<span>that count this year</span></div>' +
-    '<div><b>' + st.yearAll + '</b><span>times in all</span></div>';
+      '<span>this year</span></div>';
+
+  /* The third figure comes back ONLY when it says something. A student with
+     school-directed departures is a student whose number looks low for how
+     often the officer has seen them, and that is worth one quiet line. Most
+     students never see it. */
+  var directed = st.yearAll - st.year;
+  if (directed > 0){
+    tally.innerHTML += '<div><b>' + directed + '</b><span>more, for awards or<br>school ' +
+      'events &mdash; not counted</span></div>';
+  }
 
   if (hitYear){
     pane.classList.add('flagged','hard');
