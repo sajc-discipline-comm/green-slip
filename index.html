@@ -596,8 +596,13 @@ function doLogin(){
       if (!j.ok) { say('mLogin', j.error || 'Could not sign in.'); return; }
       S.token = j.token; S.who = who;
       idleStart(j.idleMinutes);
+      /* THE IDLE NUMBER IS STORED TOO, added 4 August 2026. It arrives only
+         with this reply, and resume() below has no reply to read it from — so
+         without this, reloading the page restored the token and left the idle
+         timer disarmed. See the note on resume(). */
       try { sessionStorage.setItem('sajc_ed_token', j.token);
-            sessionStorage.setItem('sajc_ed_who', who); } catch(e){}
+            sessionStorage.setItem('sajc_ed_who', who);
+            sessionStorage.setItem('sajc_ed_idle', String(Number(j.idleMinutes) || 0)); } catch(e){}
       document.getElementById('pw').value = '';
       bootstrap(false);
     })
@@ -659,7 +664,8 @@ function signOut(why){
   // is recording today, and should not inherit somebody else's back-date.
   S.backfill=false; S.slipDate=''; paintBackfill();
   try { sessionStorage.removeItem('sajc_ed_token');
-        sessionStorage.removeItem('sajc_ed_who'); } catch(e){}
+        sessionStorage.removeItem('sajc_ed_who');
+        sessionStorage.removeItem('sajc_ed_idle'); } catch(e){}
   document.getElementById('hdrSub').textContent='';
   go('login', true);
   if (why) say('mLogin', why);
@@ -1171,11 +1177,32 @@ document.addEventListener('keydown', function(e){
 /* ── start ──────────────────────────────────────────────────────────── */
 document.getElementById('loginDate').textContent = dateLine();
 document.getElementById('btnUndo').style.display = 'none';
+/* RESUMING MUST RE-ARM THE IDLE CLOCK, not just the session.
+
+   Until 4 August 2026 this restored the token and called bootstrap(), but
+   never called idleStart(). IDLE_MIN stayed 0, idleBump() returned on its
+   first line, and the timer never armed — so a signed-in page that was
+   RELOADED, or reopened in a tab the browser restored, stayed signed in
+   indefinitely on a shared machine in a room the public walks through. That
+   is the exact case the idle sign-out was built for, and a reload is not an
+   unusual thing to do; it is the first thing anybody tries when a page looks
+   stuck.
+
+   The number is read back from sessionStorage because it only ever arrives
+   with the goLogin reply, and there is no reply here. If it is missing —
+   a session stored by the older version of this page, before the key
+   existed — the fallback is 30 minutes rather than 0: on this machine,
+   guessing at a timeout is safer than guessing at none. */
 (function resume(){
   try {
     var t = sessionStorage.getItem('sajc_ed_token');
     var w = sessionStorage.getItem('sajc_ed_who');
-    if (t && w){ S.token=t; S.who=w; bootstrap(false); }
+    var m = sessionStorage.getItem('sajc_ed_idle');
+    if (t && w){
+      S.token=t; S.who=w;
+      idleStart(m === null ? 30 : Number(m) || 0);
+      bootstrap(false);
+    }
   } catch(e){}
 })();
 </script>
