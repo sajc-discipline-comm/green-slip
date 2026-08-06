@@ -14,8 +14,10 @@
   Built 31 July 2026 for discipline@sajc.edu.sg.
 
   GAS_URL IS THE ONE LINE IN THIS FILE THAT CAN GO STALE. It points at the
-  same deployment as gate.html. The five reasons come from the Reasons tab at
-  run time, so rewording one or retiring one is still only a cell edit.
+  same deployment as gate.html. The reasons come from the Reasons tab at run
+  time — however many there are — so rewording one, retiring one or adding one
+  is still only a cell edit. (This said "the five reasons" until 4 August 2026,
+  by which point there were six.)
 
   IT CHANGES WHENEVER A NEW DEPLOYMENT IS CREATED rather than the existing one
   edited, and a stale address is the worst-behaved failure in this system: it
@@ -645,7 +647,7 @@ function idleBump(){
   if (!IDLE_MIN) return;                       /* 0 or blank: switched off */
   idleTimer = setTimeout(function(){
     idleTimer = null;
-    if (!!!S.token) return;         /* already signed out */
+    if (!S.token) return;           /* already signed out */
     signOut('Signed out after ' + IDLE_MIN + ' minutes without use. ' +
             'This is a shared screen, so it does not stay open on its own.');
   }, IDLE_MIN * 60 * 1000);
@@ -865,8 +867,9 @@ function recordAnyway(typed){
 }
 
 /**
- * The five reasons come from the Reasons tab at run time, so rewording one or
- * retiring one is a cell edit rather than a code change. Numbered 1, 2, 3 —
+ * The reasons come from the Reasons tab at run time — this page never knows
+ * how many there are — so rewording one, retiring one or adding one is a cell
+ * edit rather than a code change. Numbered 1, 2, 3 —
  * an ordinal to be read, never a shortcut to be typed.
  */
 function showReasons(){
